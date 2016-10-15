@@ -1,0 +1,47 @@
+Table 31. IF_OFFSET settings
+IF_OFFSET_ANA IF_OFFSET_DIG fIF [kHz] fXO [MHz]
+0xB6 0xB6 480.469 24
+0xAC 0xAC 480.143 25
+0xA3 0xA3 480.306 26
+0x3B 0xB6 480.469 48
+0x36 0xAC 480.143 50
+0x31 0xA3 480.140 52
+
+
+F_c = F_base+F_offset+(CHSPACE*F_xo/2**15)-CHNUM
+
+F_base = F_xo/((B*D)/2) * SYNT/2**18
+
+F_xo = 50MHz
+
+SYNT is 26bit
+
+B = 6 for high, 12 for middle, 16 for low, 32 for very low 
+
+D = 1 if REFDIV 0
+
+F_offset = F_xo/2**18*(FC_OFFSET)
+
+MOD_TYPE =
+– 0 (00): 2-FSK
+– 1 (01): GFSK
+– 2 (10): ASK/OOK
+– 3 (11): MSK
+
+PA_POWER[PA_LEVEL_MAX_INDEX]
+
+For test and measurement purposes the device can be programmed to generate a
+continuous wave carrier without any modulation by setting the CW field of the MOD0
+register. In transmission, a TXSOURCE like PN9 should be configured to keep the
+transmitter in TX state for an undefined period of time. In reception, this mode can be also
+chosen to analyze the RX performance; in this case an infinite RX timeout should be
+configured to keep the SPIRIT1 in RX state.
+
+DataRate = f_clk*(256+DATARATE_M)*2**DATARATE_E)/2**28
+
+DATARATE_M is 8bit
+DATARATE_E is 4bit
+
+F_clk is digital clock frequency - 25MHz
+
+XO_RCO_TEST has digital clock divider

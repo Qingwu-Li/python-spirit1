@@ -1,0 +1,20 @@
+Command
+code Command name Execution state Description
+0x60 TX READY Start to transmit
+0x61 RX READY Start to receive
+0x62 READY STANDBY, SLEEP, LOCK Go to READY
+0x63 STANDBY READY Go to STANDBY
+0x64 SLEEP READY Go to SLEEP
+0x65 LOCKRX READY Go to LOCK state by using the RX configuration of the synthesizer
+0x66 LOCKTX READY Go to LOCK state by using the TX configuration of the synthesizer
+0x67 SABORT TX, RX Exit from TX or RX states and go to READY state
+0x68 LDC_RELOAD All Reload the LDC timer with the value stored in the LDC_PRESCALER/COUNTER registers
+0x69 SEQUENCE_UPDATE All Reload the packet sequence counter with the value stored in the PROTOCOL[2] register.
+0x6A AES Enc All Start the encryption routine
+0x6B AES Key All Start the procedure to compute the key for decryption
+0x6C AES Dec All Start decryption using the current key
+0x6D AES KeyDec All Compute the key and start decryption
+0x70 SRES All Reset
+0x71 FLUSHRXFIFO All Clean the RX FIFO
+0x72 FLUSHTXFIFO All Clean the TX FIFO
+
