@@ -4,6 +4,9 @@ from time import sleep
 import atexit
 import spirit1_regs as s1r
 
+index_of_closest = lambda lst, x: lst.index(sorted(lst, key=lambda y: abs(y-x))[0])
+band_thresholds = [860166667, 430083334, 322562500, 161281250]
+
 def calc_rate(rate):
     for DR_E in range(16):
         DR_M = (rate * 2**28 / 25e6) / (2**DR_E) - 256
@@ -69,9 +72,7 @@ class SpiritOne(object):
         return F_base
 
     def set_f_base(self, base):
-        index_of_closest = lambda lst, x: lst.index(sorted(lst, key=lambda y: abs(y-x))[0])
-        thresholds = [860166667, 430083334, 322562500, 161281250]
-        self.band = [6, 12, 16, 32][index_of_closest(thresholds, base)]
+        self.band = [6, 12, 16, 32][index_of_closest(band_thresholds, base)]
         SYNT = base*self.band*2**18/self.crystal
         SYNT = int(SYNT)
         BS = {16: 4, 32: 5, 12: 3, 6: 1}[self.band]
@@ -104,9 +105,7 @@ class SpiritOne(object):
         sc1 |= 0x80
         # clear bottom bits
         sc1 &= 0xF0
-        index_of_closest = lambda lst, x: lst.index(sorted(lst, key=lambda y: abs(y-x))[0])
-        thresholds = [860166667, 430083334, 322562500, 161281250]
-        if freq < thresholds[index_of_closest(thresholds, freq)]:
+        if freq < band_thresholds[index_of_closest(band_thresholds, freq)]:
             # enable VCO_L
             sc1 |= 1 << 2
         else:
