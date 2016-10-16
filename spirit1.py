@@ -7,17 +7,6 @@ import spirit1_regs as s1r
 index_of_closest = lambda lst, x: lst.index(sorted(lst, key=lambda y: abs(y-x))[0])
 band_thresholds = [860166667, 430083334, 322562500, 161281250]
 
-def calc_rate(rate):
-    for DR_E in range(16):
-        DR_M = (rate * 2**28 / (self.crystal/2)) / (2**DR_E) - 256
-        if (DR_M > 0) and ( DR_M < 256):
-            break
-    if (DR_M >= 0) and (DR_M < 256) and (DR_E >= 0) and (DR_E < 16):
-        return int(DR_M), int(DR_E)
-    else:
-        return None, None
-
-
 class SpiritOne(object):
 
     def __init__(self, crystal = 50e6, SRES = True):
@@ -38,6 +27,16 @@ class SpiritOne(object):
         self.set_IF()
         atexit.register(self.cleanup)
 
+    def calc_rate(self, rate):
+        for DR_E in range(16):
+            DR_M = (rate * 2**28 / (self.crystal/2)) / (2**DR_E) - 256
+            if (DR_M > 0) and ( DR_M < 256):
+                break
+        if (DR_M >= 0) and (DR_M < 256) and (DR_E >= 0) and (DR_E < 16):
+            return int(DR_M), int(DR_E)
+        else:
+            return None, None
+
     def command(self, command_byte):
         return self.spi.xfer2([0b10000000, command_byte])
 
@@ -49,6 +48,8 @@ class SpiritOne(object):
             res = [0, start_register, data]
         if type(data) == list:
             res = [0, start_register] + data
+        if type(data) == bytes:
+            res = [0, start_register] + [x for x in data]
         return self.spi.xfer2(res)
 
     def decode_MC(self, b0, b1):
@@ -78,7 +79,8 @@ class SpiritOne(object):
         BS = {16: 4, 32: 5, 12: 3, 6: 1}[self.band]
         SYNT <<= 3
         SYNT |= BS
-        return self.write(s1r.SYNT3_BASE, [(SYNT>>24)&0xFF, (SYNT>>16)&0xFF, (SYNT>>8)&0xFF, (SYNT)&0xFF])
+        out = SYNT.to_bytes(4, byteorder='big')
+        return self.write(s1r.SYNT3_BASE, out)
         
 
     def set_IF(self):
@@ -121,15 +123,12 @@ class SpiritOne(object):
         chnum = max(min(int(chnum), 255), 0)
         return self.write(s1r.CHNUM_BASE, chspace)
 
-    def set_TX_RND(self):
-        pc1 = s1.read(s1r.PCKTCTRL1_BASE)[-1]
-        # PN9 continuous stream
-        pc1 |= s1r.PCKTCTRL1_TX_SOURCE_MASK
-        s1.write(s1r.PCKTCTRL1_BASE, pc1)
+    def set_TX_MODE(self, mode=s1r.PCKTCTRL1_TX_MODE_PN9):
+        s1.write(s1r.PCKTCTRL1_BASE, mode)
 
     def set_MOD(self, mod=s1r.MOD0_CW, rate = 1e3):
         m0 = mod
-        DR_M, DR_E = calc_rate(rate)
+        DR_M, DR_E = self.calc_rate(rate)
         m0 |= DR_E
         s1.write(s1r.MOD1_BASE, [DR_M, m0])
 
@@ -138,12 +137,8 @@ if __name__ == "__main__":
     s1 = SpiritOne()
     s1.set_freq(433.92e6)
     freq = s1.get_f_base()
-    s1.set_TX_RND()
+    s1.set_TX_MODE(s1r.PCKTCTRL1_TX_MODE_DIRECT_FIFO)
     s1.set_MOD(s1r.MOD0_MOD_TYPE_ASK, rate=300)
+    s1.write(0xFF, ([0xFF]*5+[0x00]*5)*5)
     s1.write(s1r.PA_POWER7_BASE, 0x1F)
-    for i in range(10):
-        print(s1.decode_MC(*s1.command(s1r.COMMAND_TX)))
-        sleep(0.5)
-        print(s1.decode_MC(*s1.command(s1r.COMMAND_SABORT)))
-        s1.set_f_base(freq-i*10e3)
-        sleep(0.5)
+    print(s1.decode_MC(*s1.command(s1r.COMMAND_TX)))
