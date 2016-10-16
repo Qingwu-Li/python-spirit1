@@ -9,7 +9,7 @@ band_thresholds = [860166667, 430083334, 322562500, 161281250]
 
 def calc_rate(rate):
     for DR_E in range(16):
-        DR_M = (rate * 2**28 / 25e6) / (2**DR_E) - 256
+        DR_M = (rate * 2**28 / (self.crystal/2)) / (2**DR_E) - 256
         if (DR_M > 0) and ( DR_M < 256):
             break
     if (DR_M >= 0) and (DR_M < 256) and (DR_E >= 0) and (DR_E < 16):
@@ -53,7 +53,7 @@ class SpiritOne(object):
 
     def decode_MC(self, b0, b1):
         STATE = b1 >> 1
-        states = {0x40: 'STANDBY', 0x36: 'SLEEP', 0x03: 'READY', 0x0F: 'LOCK', 0x33: 'RX', 0x5F: 'TX'}
+        states = {0x40: 'STANDBY', 0x36: 'SLEEP', 0x03: 'READY', 0x0F: 'LOCK', 0x33: 'RX', 0x5F: 'TX', 0x13: 'LOCKWON'}
         if STATE in states.keys():
             return states[STATE]
 
