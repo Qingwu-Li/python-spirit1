@@ -17,7 +17,7 @@ def calc_rate(rate):
 
 class SpiritOne(object):
 
-    def __init__(self, crystal = 50e6):
+    def __init__(self, crystal = 50e6, SRES = True):
         self.crystal = crystal
         self.spi = spidev.SpiDev()
         GPIO.cleanup()
@@ -29,6 +29,10 @@ class SpiritOne(object):
         self.spi.mode = 0
         self.spi.max_speed_hz = 1000000
         sleep(0.005)
+        if SRES:
+            self.command(s1r.COMMAND_SRES)
+            sleep(0.002)
+        self.set_IF()
         atexit.register(self.cleanup)
 
     def command(self, command_byte):
@@ -60,12 +64,14 @@ class SpiritOne(object):
         # 6 = 900MHz, 12 = 400MHz, 16 = 300MHz, 32 = 150MHz
         self.band = {1: 6, 3: 12, 4: 16, 5: 32}[BS]
         SYNT = (SYNT[0] & 0x1f) << 21 | SYNT[1] << 13 | SYNT[2] << 5 | (SYNT[3] >> 3)
-        # constant per hardware design
-        # BS / 2 for low crystals / no divider
+        # BS / 2 for low crystals ( no divider )
         F_base = self.crystal * (SYNT / 2**18) / (self.band)
         return F_base
 
     def set_f_base(self, base):
+        index_of_closest = lambda lst, x: lst.index(sorted(lst, key=lambda y: abs(y-x))[0])
+        thresholds = [860166667, 430083334, 322562500, 161281250]
+        self.band = [6, 12, 16, 32][index_of_closest(thresholds, base)]
         SYNT = base*self.band*2**18/self.crystal
         SYNT = int(SYNT)
         BS = {16: 4, 32: 5, 12: 3, 6: 1}[self.band]
@@ -88,16 +94,33 @@ class SpiritOne(object):
         self.write(s1r.IF_OFFSET_ANA_BASE, mapping[self.crystal][0])
         self.write(s1r.IF_OFFSET_DIG_BASE, mapping[self.crystal][1])
 
-    def set_SYNTH1(self):
-        # 860166667, 430083334, 322562500, 161281250
+    def set_freq(self, freq):
+        self.set_f_base(freq)
+        self.set_SYNTH1(freq)
+
+    def set_SYNTH1(self, freq):
         sc1 = self.read(s1r.SYNTH_CONFIG1_BASE, 1)[-1]
         # enable division by 2 for high freq clock
         sc1 |= 0x80
         # clear bottom bits
         sc1 &= 0xF0
-        # enable VCO_L
-        sc1 |= 1 << 2
+        index_of_closest = lambda lst, x: lst.index(sorted(lst, key=lambda y: abs(y-x))[0])
+        thresholds = [860166667, 430083334, 322562500, 161281250]
+        if freq < thresholds[index_of_closest(thresholds, freq)]:
+            # enable VCO_L
+            sc1 |= 1 << 2
+        else:
+            # enable VCO_H
+            sc1 |= 1 << 1 
         self.write(s1r.SYNTH_CONFIG1_BASE, sc1)
+
+    def set_channel_spacing(self, chspacing):
+        chspace = max(min(int(chspacing/(self.crystal / 2**15)), 255), 0)
+        return self.write(s1r.CHSPACE_BASE, chspace)
+
+    def set_channel_num(self, chnum):
+        chnum = max(min(int(chnum), 255), 0)
+        return self.write(s1r.CHNUM_BASE, chspace)
 
     def set_TX_RND(self):
         pc1 = s1.read(s1r.PCKTCTRL1_BASE)[-1]
@@ -114,15 +137,11 @@ class SpiritOne(object):
 
 if __name__ == "__main__":
     s1 = SpiritOne()
-    s1.command(s1r.COMMAND_SRES)
-    sleep(0.002)
-    print([hex(x) for x in s1.read(s1r.DEVICE_INFO1_PARTNUM, 2)])
-    s1.set_IF()
-    s1.set_SYNTH1()
+    s1.set_freq(433.92e6)
+    freq = s1.get_f_base()
     s1.set_TX_RND()
     s1.set_MOD(s1r.MOD0_MOD_TYPE_ASK, rate=300)
     s1.write(s1r.PA_POWER7_BASE, 0x1F)
-    freq = s1.get_f_base()
     for i in range(10):
         print(s1.decode_MC(*s1.command(s1r.COMMAND_TX)))
         sleep(0.5)
