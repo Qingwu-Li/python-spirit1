@@ -18,7 +18,7 @@ class SpiritOne(object):
 		sleep(0.005)
 		atexit.register(self.cleanup)
 	def command(self, command_byte):
-		res = self.spi.xfer2([0b10000001, command_byte])
+		res = self.spi.xfer2([0b10000000, command_byte])
 		sleep(0.002)
 		return res
 	def read(self, start_register, count = 1):
@@ -70,8 +70,9 @@ if __name__ == "__main__":
 	s1.write(s1r.PCKTCTRL1_BASE, s1.read(s1r.PCKTCTRL1_BASE)[-1]|s1r.PCKTCTRL1_TX_SOURCE_MASK)
 	# no modulation - continuous wave (CW) bit high
 	s1.write(s1r.MOD0_BASE, 0x80)
-	s1.write(s1r.PA_POWER7_BASE, 0x5F)
+	s1.write(s1r.PA_POWER7_BASE, 0x1F)
 	print(s1.get_f_base())
 	print(s1.decode_MC(*s1.command(s1r.COMMAND_TX)))
 	sleep(1)
+	s1.command(s1r.COMMAND_SRES)
 
