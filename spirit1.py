@@ -30,8 +30,10 @@ class SpiritOne(object):
 			res = [0, start_register] + data
 		return self.spi.xfer2(res)
 	def decode_MC(self, b0, b1):
+		STATE = b1>>1
 		states = {0x40:'STANDBY', 0x36:'SLEEP', 0x03:'READY', 0x0F: 'LOCK', 0x33:'RX', 0x5F:'TX'}
-		return states[b1>>1]
+		if STATE in states.keys():
+			return states[STATE]
 	def cleanup(self):
 		self.spi.close()
 		GPIO.cleanup()
@@ -72,7 +74,9 @@ if __name__ == "__main__":
 	s1.write(s1r.MOD0_BASE, 0x80)
 	s1.write(s1r.PA_POWER7_BASE, 0x1F)
 	print(s1.get_f_base())
-	print(s1.decode_MC(*s1.command(s1r.COMMAND_TX)))
-	sleep(1)
-	s1.command(s1r.COMMAND_SRES)
+	for _ in range(10):
+		print(s1.decode_MC(*s1.command(s1r.COMMAND_TX)))
+		sleep(0.5)
+		print(s1.decode_MC(*s1.command(s1r.COMMAND_SABORT)))
+		sleep(0.5)
 
