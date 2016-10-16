@@ -58,13 +58,21 @@ class SpiritOne(object):
         SYNT = self.read(s1r.SYNT3_BASE, 4)[-4::]
         BS = SYNT[3] & 0b11
         # 6 = 900MHz, 12 = 400MHz, 16 = 300MHz, 32 = 150MHz
-        BS = {1: 6, 3: 12, 4: 16, 5: 32}[BS]
-        self.band = BS
+        self.band = {1: 6, 3: 12, 4: 16, 5: 32}[BS]
         SYNT = (SYNT[0] & 0x1f) << 21 | SYNT[1] << 13 | SYNT[2] << 5 | (SYNT[3] >> 3)
         # constant per hardware design
-        F_xo = self.crystal / 2
-        F_base = F_xo * (SYNT / 2**18) / (BS * 1 / 2)
+        # BS / 2 for low crystals / no divider
+        F_base = self.crystal * (SYNT / 2**18) / (self.band)
         return F_base
+
+    def set_f_base(self, base):
+        SYNT = base*self.band*2**18/self.crystal
+        SYNT = int(SYNT)
+        BS = {16: 4, 32: 5, 12: 3, 6: 1}[self.band]
+        SYNT <<= 3
+        SYNT |= BS
+        return self.write(s1r.SYNT3_BASE, [(SYNT>>24)&0xFF, (SYNT>>16)&0xFF, (SYNT>>8)&0xFF, (SYNT)&0xFF])
+        
 
     def set_IF(self):
         # set intermediate frequency based on self.crystal
@@ -114,9 +122,10 @@ if __name__ == "__main__":
     s1.set_TX_RND()
     s1.set_MOD(s1r.MOD0_MOD_TYPE_ASK, rate=300)
     s1.write(s1r.PA_POWER7_BASE, 0x1F)
-    print(s1.get_f_base())
-    for _ in range(10):
+    freq = s1.get_f_base()
+    for i in range(10):
         print(s1.decode_MC(*s1.command(s1r.COMMAND_TX)))
         sleep(0.5)
         print(s1.decode_MC(*s1.command(s1r.COMMAND_SABORT)))
+        s1.set_f_base(freq-i*10e3)
         sleep(0.5)
