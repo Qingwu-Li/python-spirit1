@@ -137,6 +137,23 @@ class SpiritOne(object):
     def set_no_AFC(self):
         self.write(s1r.AFC2_BASE, 0x00)
 
+    def setup_RSSI(self):
+        # TODO, defaults look sane
+
+    def setup_clockrec(self):
+        # TODO, defaults look sane
+
+    def setup_AGC(self):
+        # ASK requires long settling time
+        # TAGCmeas = 12/F_clk * 2**MEAS_TIME
+        # AGCCTRL2 -> 12
+        self.write(s1r.AGCCTRL2_BASE, 0xB)
+
+    def set_RX_MODE(self, mode=s1r.PCKTCTRL3_RX_MODE_FIFO):
+        self.write(s1r.PCKTCTRL3_BASE, mode)
+
+    def set_no_SQI(self):
+        self.write(s1r.QI_BASE = 0)
 
 if __name__ == "__main__":
     s1 = SpiritOne()
