@@ -124,13 +124,18 @@ class SpiritOne(object):
         return self.write(s1r.CHNUM_BASE, chspace)
 
     def set_TX_MODE(self, mode=s1r.PCKTCTRL1_TX_MODE_PN9):
-        s1.write(s1r.PCKTCTRL1_BASE, mode)
+        self.write(s1r.PCKTCTRL1_BASE, mode)
 
     def set_MOD(self, mod=s1r.MOD0_CW, rate = 1e3):
-        m0 = mod
         DR_M, DR_E = self.calc_rate(rate)
-        m0 |= DR_E
-        s1.write(s1r.MOD1_BASE, [DR_M, m0])
+        m0 = mod | DR_E
+        self.write(s1r.MOD1_BASE, [DR_M, m0])
+
+    def set_max_channel_filter(self):
+        self.write(s1r.CHFLT_BASE, 0x00)
+
+    def set_no_AFC(self):
+        self.write(s1r.AFC2_BASE, 0x00)
 
 
 if __name__ == "__main__":
