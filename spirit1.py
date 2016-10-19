@@ -79,7 +79,7 @@ class SpiritOne(object):
         BS = {16: 4, 32: 5, 12: 3, 6: 1}[self.band]
         SYNT <<= 3
         SYNT |= BS
-        out = SYNT.to_bytes(4, byteorder='big')
+        out = SYNT.to_bytes(4, byteorder='little')
         return self.write(s1r.SYNT3_BASE, out)
         
 
@@ -138,29 +138,57 @@ class SpiritOne(object):
         self.write(s1r.AFC2_BASE, 0x00)
 
     def setup_RSSI(self):
-        # TODO, defaults look sane
+        # dynamic link quality sensing
+        self.write(s1r.RSSI_FLT_BASE, [0xE4, 0x60])
 
     def setup_clockrec(self):
-        # TODO, defaults look sane
+        #self.write(s1r.FDEV0_BASE, 1<<3)
+        # reset values except use short preamble
+        self.write(s1r.CLOCKREC_BASE, 0b01001000)
 
     def setup_AGC(self):
         # ASK requires long settling time
         # TAGCmeas = 12/F_clk * 2**MEAS_TIME
-        # AGCCTRL2 -> 12
-        self.write(s1r.AGCCTRL2_BASE, 0xB)
+        # AGCCTRL2
+        # 0xE -> 8ms
+        # 0xD -> 4ms
+        self.write(s1r.AGCCTRL2_BASE, 0xD)
+        #return None
 
-    def set_RX_MODE(self, mode=s1r.PCKTCTRL3_RX_MODE_FIFO):
+    def set_RX_MODE(self, mode=s1r.PCKTCTRL3_RX_MODE_DIRECT_FIFO):
         self.write(s1r.PCKTCTRL3_BASE, mode)
 
     def set_no_SQI(self):
-        self.write(s1r.QI_BASE = 0)
+        self.write(s1r.QI_BASE, 0)
 
 if __name__ == "__main__":
+    import statistics
     s1 = SpiritOne()
     s1.set_freq(433.92e6)
     freq = s1.get_f_base()
-    s1.set_TX_MODE(s1r.PCKTCTRL1_TX_MODE_DIRECT_FIFO)
-    s1.set_MOD(s1r.MOD0_MOD_TYPE_ASK, rate=300)
-    s1.write(0xFF, ([0xFF]*5+[0x00]*5)*5)
-    s1.write(s1r.PA_POWER7_BASE, 0x1F)
-    print(s1.decode_MC(*s1.command(s1r.COMMAND_TX)))
+    s1.set_max_channel_filter()
+    s1.set_RX_MODE()
+    s1.set_no_AFC()
+    s1.setup_AGC()
+    s1.setup_RSSI()
+    s1.set_no_SQI()
+    s1.setup_clockrec()
+    s1.set_MOD(s1r.MOD0_MOD_TYPE_ASK, rate=1/0.000165)
+    # enable carrier sense blanking
+    s1.write(s1r.ANT_SELECT_CONF_BASE, 0b10000)
+    print(s1.decode_MC(*s1.command(s1r.COMMAND_RX)))
+    print(s1.decode_MC(*s1.command(s1r.COMMAND_RX)))
+    sleep(1)
+    while True:
+        link_qual = s1.read(s1r.LINK_QUALIF1_BASE, 3)
+        # call SABORT to update RSSI and AGC
+        s1.decode_MC(*s1.command(s1r.COMMAND_SABORT))
+        # call RX for sport
+        s1.decode_MC(*s1.command(s1r.COMMAND_RX))
+        # get count of bytes in FIFO
+        fifo_len = s1.read(s1r.LINEAR_FIFO_STATUS0_BASE, 1)[-1]
+        if fifo_len:
+            res = s1.read(0xFF, fifo_len)
+            print(bin(int().from_bytes(bytes(res[3::]), 'big')))
+        print('RSSI', link_qual[-1]/2-130.)
+        sleep(0.01)
