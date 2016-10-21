@@ -1,22 +1,34 @@
-from CHIP_IO import GPIO
 import spidev
 from time import sleep
 import atexit
 import spirit1_regs as s1r
 
+from tinygpio import *
+
 index_of_closest = lambda lst, x: lst.index(sorted(lst, key=lambda y: abs(y-x))[0])
 band_thresholds = [860166667, 430083334, 322562500, 161281250]
+
+SDN = 1016 + 7
+CS_BLANK = 1016 + 4
 
 class SpiritOne(object):
 
     def __init__(self, crystal = 50e6, SRES = True):
         self.crystal = crystal
         self.spi = spidev.SpiDev()
-        GPIO.cleanup()
-        GPIO.setup('XIO-P7', GPIO.OUT)
-        GPIO.output('XIO-P7', GPIO.HIGH)
+        try:
+            t_export(SDN)
+        except:
+            pass
+        try:
+            t_export(CS_BLANK)
+        except:
+            pass
+        t_input(CS_BLANK)
+        t_output(SDN)
+        t_high(SDN)
         sleep(0.1)
-        GPIO.output('XIO-P7', GPIO.LOW)
+        t_low(SDN)
         self.spi.open(32766, 0)
         self.spi.mode = 0
         self.spi.max_speed_hz = 1000000
@@ -60,7 +72,6 @@ class SpiritOne(object):
 
     def cleanup(self):
         self.spi.close()
-        GPIO.cleanup()
 
     def get_f_base(self):
         SYNT = self.read(s1r.SYNT3_BASE, 4)[-4::]
@@ -79,7 +90,7 @@ class SpiritOne(object):
         BS = {16: 4, 32: 5, 12: 3, 6: 1}[self.band]
         SYNT <<= 3
         SYNT |= BS
-        out = SYNT.to_bytes(4, byteorder='little')
+        out = SYNT.to_bytes(4, byteorder='big')
         return self.write(s1r.SYNT3_BASE, out)
         
 
@@ -152,8 +163,7 @@ class SpiritOne(object):
         # AGCCTRL2
         # 0xE -> 8ms
         # 0xD -> 4ms
-        self.write(s1r.AGCCTRL2_BASE, 0xD)
-        #return None
+        self.write(s1r.AGCCTRL2_BASE, 0xB)
 
     def set_RX_MODE(self, mode=s1r.PCKTCTRL3_RX_MODE_DIRECT_FIFO):
         self.write(s1r.PCKTCTRL3_BASE, mode)
@@ -177,18 +187,20 @@ if __name__ == "__main__":
     # enable carrier sense blanking
     s1.write(s1r.ANT_SELECT_CONF_BASE, 0b10000)
     print(s1.decode_MC(*s1.command(s1r.COMMAND_RX)))
-    print(s1.decode_MC(*s1.command(s1r.COMMAND_RX)))
     sleep(1)
     while True:
+        t_input(CS_BLANK)
         link_qual = s1.read(s1r.LINK_QUALIF1_BASE, 3)
         # call SABORT to update RSSI and AGC
         s1.decode_MC(*s1.command(s1r.COMMAND_SABORT))
         # call RX for sport
         s1.decode_MC(*s1.command(s1r.COMMAND_RX))
+        s1.write(s1r.GPIO1_CONF_BASE, (16<<3) | 0b11)
         # get count of bytes in FIFO
         fifo_len = s1.read(s1r.LINEAR_FIFO_STATUS0_BASE, 1)[-1]
         if fifo_len:
+            t_output(CS_BLANK)
             res = s1.read(0xFF, fifo_len)
             print(bin(int().from_bytes(bytes(res[3::]), 'big')))
-        print('RSSI', link_qual[-1]/2-130.)
-        sleep(0.01)
+            #print('RSSI', link_qual[-1]/2-130.)
+        sleep(0.05)

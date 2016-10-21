@@ -1,0 +1,8 @@
+t_export = lambda gpio: open('/sys/class/gpio/export', 'w').write(str(gpio))
+t_direction = lambda gpio, direction: open('/sys/class/gpio/gpio'+str(gpio)+'/direction', 'w').write(direction)
+t_input = lambda gpio: t_direction(gpio, 'in')
+t_output = lambda gpio: t_direction(gpio, 'out')
+t_value = lambda gpio: int(open('/sys/class/gpio/gpio'+str(gpio)+'/value', 'r').read())
+t_write = lambda gpio, value: open('/sys/class/gpio/gpio'+str(gpio)+'/value', 'w').write(str(value))
+t_high = lambda gpio: open('/sys/class/gpio/gpio'+str(gpio)+'/value', 'w').write('1')
+t_low = lambda gpio: open('/sys/class/gpio/gpio'+str(gpio)+'/value', 'w').write('0') 
