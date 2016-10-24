@@ -189,7 +189,6 @@ if __name__ == "__main__":
     print(s1.decode_MC(*s1.command(s1r.COMMAND_RX)))
     sleep(1)
     while True:
-        t_input(CS_BLANK)
         link_qual = s1.read(s1r.LINK_QUALIF1_BASE, 3)
         # call SABORT to update RSSI and AGC
         s1.decode_MC(*s1.command(s1r.COMMAND_SABORT))
@@ -203,4 +202,7 @@ if __name__ == "__main__":
             res = s1.read(0xFF, fifo_len)
             print(bin(int().from_bytes(bytes(res[3::]), 'big')))
             #print('RSSI', link_qual[-1]/2-130.)
+        else:
+            if 'out' in t_get_dir(CS_BLANK):
+                t_input(CS_BLANK)
         sleep(0.05)
