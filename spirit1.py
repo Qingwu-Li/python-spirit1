@@ -5,15 +5,16 @@ import spirit1_regs as s1r
 
 from tinygpio import *
 
-index_of_closest = lambda lst, x: lst.index(sorted(lst, key=lambda y: abs(y-x))[0])
+index_of_closest = lambda lst, x: lst.index(sorted(lst, key=lambda y: abs(y - x))[0])
 band_thresholds = [860166667, 430083334, 322562500, 161281250]
 
 SDN = 1016 + 7
 CS_BLANK = 1016 + 4
 
+
 class SpiritOne(object):
 
-    def __init__(self, crystal = 50e6, SRES = True):
+    def __init__(self, crystal=50e6, SRES=True):
         self.crystal = crystal
         self.spi = spidev.SpiDev()
         try:
@@ -41,8 +42,8 @@ class SpiritOne(object):
 
     def calc_rate(self, rate):
         for DR_E in range(16):
-            DR_M = (rate * 2**28 / (self.crystal/2)) / (2**DR_E) - 256
-            if (DR_M > 0) and ( DR_M < 256):
+            DR_M = (rate * 2**28 / (self.crystal / 2)) / (2**DR_E) - 256
+            if (DR_M > 0) and (DR_M < 256):
                 break
         if (DR_M >= 0) and (DR_M < 256) and (DR_E >= 0) and (DR_E < 16):
             return int(DR_M), int(DR_E)
@@ -85,14 +86,13 @@ class SpiritOne(object):
 
     def set_f_base(self, base):
         self.band = [6, 12, 16, 32][index_of_closest(band_thresholds, base)]
-        SYNT = base*self.band*2**18/self.crystal
+        SYNT = base * self.band * 2**18 / self.crystal
         SYNT = int(SYNT)
         BS = {16: 4, 32: 5, 12: 3, 6: 1}[self.band]
         SYNT <<= 3
         SYNT |= BS
         out = SYNT.to_bytes(4, byteorder='big')
         return self.write(s1r.SYNT3_BASE, out)
-        
 
     def set_IF(self):
         # set intermediate frequency based on self.crystal
@@ -103,7 +103,7 @@ class SpiritOne(object):
 0x36 0xAC 480.143 50
 0x31 0xA3 480.140 52"""
         table = [row.split() for row in table.split('\n')]
-        mapping = dict([(int(row[3])*1e6, (int(row[0],16), int(row[1],16), float(row[2]))) for row in table])
+        mapping = dict([(int(row[3]) * 1e6, (int(row[0], 16), int(row[1], 16), float(row[2]))) for row in table])
         # 50MHz row from datasheet: 0x36 0xAC 480.143 50
         self.write(s1r.IF_OFFSET_ANA_BASE, mapping[self.crystal][0])
         self.write(s1r.IF_OFFSET_DIG_BASE, mapping[self.crystal][1])
@@ -123,11 +123,11 @@ class SpiritOne(object):
             sc1 |= 1 << 2
         else:
             # enable VCO_H
-            sc1 |= 1 << 1 
+            sc1 |= 1 << 1
         self.write(s1r.SYNTH_CONFIG1_BASE, sc1)
 
     def set_channel_spacing(self, chspacing):
-        chspace = max(min(int(chspacing/(self.crystal / 2**15)), 255), 0)
+        chspace = max(min(int(chspacing / (self.crystal / 2**15)), 255), 0)
         return self.write(s1r.CHSPACE_BASE, chspace)
 
     def set_channel_num(self, chnum):
@@ -137,7 +137,7 @@ class SpiritOne(object):
     def set_TX_MODE(self, mode=s1r.PCKTCTRL1_TX_MODE_PN9):
         self.write(s1r.PCKTCTRL1_BASE, mode)
 
-    def set_MOD(self, mod=s1r.MOD0_CW, rate = 1e3):
+    def set_MOD(self, mod=s1r.MOD0_CW, rate=1e3):
         DR_M, DR_E = self.calc_rate(rate)
         m0 = mod | DR_E
         self.write(s1r.MOD1_BASE, [DR_M, m0])
@@ -172,7 +172,6 @@ class SpiritOne(object):
         self.write(s1r.QI_BASE, 0)
 
 if __name__ == "__main__":
-    import statistics
     s1 = SpiritOne()
     s1.set_freq(433.92e6)
     freq = s1.get_f_base()
@@ -183,7 +182,7 @@ if __name__ == "__main__":
     s1.setup_RSSI()
     s1.set_no_SQI()
     s1.setup_clockrec()
-    s1.set_MOD(s1r.MOD0_MOD_TYPE_ASK, rate=1/0.000165)
+    s1.set_MOD(s1r.MOD0_MOD_TYPE_ASK, rate=1 / 0.000165)
     # enable carrier sense blanking
     s1.write(s1r.ANT_SELECT_CONF_BASE, 0b10000)
     print(s1.decode_MC(*s1.command(s1r.COMMAND_RX)))
@@ -194,7 +193,7 @@ if __name__ == "__main__":
         s1.decode_MC(*s1.command(s1r.COMMAND_SABORT))
         # call RX for sport
         s1.decode_MC(*s1.command(s1r.COMMAND_RX))
-        s1.write(s1r.GPIO1_CONF_BASE, (16<<3) | 0b11)
+        s1.write(s1r.GPIO1_CONF_BASE, (16 << 3) | 0b11)
         # get count of bytes in FIFO
         fifo_len = s1.read(s1r.LINEAR_FIFO_STATUS0_BASE, 1)[-1]
         if fifo_len:
