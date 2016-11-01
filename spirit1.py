@@ -8,9 +8,14 @@ from tinygpio import *
 index_of_closest = lambda lst, x: lst.index(sorted(lst, key=lambda y: abs(y - x))[0])
 band_thresholds = [860166667, 430083334, 322562500, 161281250]
 
-SDN = 1016 + 7
-CS_BLANK = 1016 + 4
 
+try:
+    # banana pi
+    open('/etc/armbian-release')
+    SDN = t_name('PI14')
+except:
+    # CHIP
+    SDN = 1016 + 7
 
 class SpiritOne(object):
 
@@ -21,11 +26,6 @@ class SpiritOne(object):
             t_export(SDN)
         except:
             pass
-        try:
-            t_export(CS_BLANK)
-        except:
-            pass
-        t_input(CS_BLANK)
         t_output(SDN)
         t_high(SDN)
         sleep(0.1)
@@ -148,9 +148,9 @@ class SpiritOne(object):
     def set_no_AFC(self):
         self.write(s1r.AFC2_BASE, 0x00)
 
-    def setup_RSSI(self):
+    def setup_RSSI(self, threshold = -78):
         # dynamic link quality sensing
-        self.write(s1r.RSSI_FLT_BASE, [0xE4, 0x60])
+        self.write(s1r.RSSI_FLT_BASE, [0xE4, 2*(threshold+130)])
 
     def setup_clockrec(self):
         #self.write(s1r.FDEV0_BASE, 1<<3)
@@ -193,15 +193,11 @@ if __name__ == "__main__":
         s1.decode_MC(*s1.command(s1r.COMMAND_SABORT))
         # call RX for sport
         s1.decode_MC(*s1.command(s1r.COMMAND_RX))
-        s1.write(s1r.GPIO1_CONF_BASE, (16 << 3) | 0b11)
+        s1.write(s1r.GPIO0_CONF_BASE, (16 << 3) | 0b11)
         # get count of bytes in FIFO
         fifo_len = s1.read(s1r.LINEAR_FIFO_STATUS0_BASE, 1)[-1]
         if fifo_len:
-            t_output(CS_BLANK)
-            res = s1.read(0xFF, fifo_len)
-            print(bin(int().from_bytes(bytes(res[3::]), 'big')))
-            #print('RSSI', link_qual[-1]/2-130.)
-        else:
-            if 'out' in t_get_dir(CS_BLANK):
-                t_input(CS_BLANK)
+            res = s1.command(s1r.COMMAND_FLUSHRXFIFO)
+            #print(bin(int().from_bytes(bytes(res[3::]), 'big')))
+            print('RSSI', link_qual[-1]/2-130.)
         sleep(0.05)
