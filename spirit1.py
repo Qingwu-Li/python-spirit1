@@ -1,4 +1,4 @@
-import spidev
+import spi
 from time import sleep
 import atexit
 import spirit1_regs as s1r
@@ -21,7 +21,7 @@ class SpiritOne(object):
 
     def __init__(self, crystal=50e6, SRES=True):
         self.crystal = crystal
-        self.spi = spidev.SpiDev()
+        self.spi = spi.SPI('/dev/spidev32766.0', 0, 1000000)
         try:
             t_export(SDN)
         except:
@@ -30,9 +30,6 @@ class SpiritOne(object):
         t_high(SDN)
         sleep(0.1)
         t_low(SDN)
-        self.spi.open(32766, 0)
-        self.spi.mode = 0
-        self.spi.max_speed_hz = 1000000
         sleep(0.005)
         if SRES:
             self.command(s1r.COMMAND_SRES)
@@ -51,10 +48,10 @@ class SpiritOne(object):
             return None, None
 
     def command(self, command_byte):
-        return self.spi.xfer2([0b10000000, command_byte])
+        return self.spi.transfer([0b10000000, command_byte])
 
     def read(self, start_register, count=1):
-        return self.spi.xfer2([0b00000001, start_register] + [0x00] * count)
+        return self.spi.transfer([0b00000001, start_register] + [0x00] * count)
 
     def write(self, start_register, data):
         if type(data) == int:
@@ -63,7 +60,7 @@ class SpiritOne(object):
             res = [0, start_register] + data
         if type(data) == bytes:
             res = [0, start_register] + [x for x in data]
-        return self.spi.xfer2(res)
+        return self.spi.transfer(res)
 
     def decode_MC(self, b0, b1):
         STATE = b1 >> 1
