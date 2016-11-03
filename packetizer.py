@@ -1,7 +1,5 @@
-import spidev
-s1 = spidev.SpiDev()
-s1.open(32765, 0)
-s1.max_speed_hz = 20000
+import spi
+s = spi.SPI('/dev/spidev32765.0', 0, 100000)
 from bitarray import bitarray
 r = []
 ct = 0
@@ -13,48 +11,46 @@ import time
 printer = lambda xs: ''.join([{0: '▁', 1: '█'}[x] for x in xs])
 
 def packetizer(xs):
-    counts = sorted([x[0] for x in xs])
-    deltas = [y-x for (x,y) in zip(counts, counts[1::])]
-    median = statistics.median_grouped([v[0] for v in xs]) 
-    print(median, counts)
-    print(deltas)
-    breaks = [i[0] for i in enumerate(xs) if (i[1][0] > median * 3) and (i[1][1] == False)]
+    counts = sorted([x[0] for x in xs if x[1]])
+    decile = len(counts)//10
+    short_decile = statistics.mean(counts[1*decile:2*decile])
+    long_decile = statistics.mean(counts[8*decile:9*decile])
+    #print('first counts', short_decile, long_decile)
+    #print([x for x in rle(counts)])
+    breaks = [i[0] for i in enumerate(xs) if (i[1][0] > short_decile  * 4) and (i[1][1] == False)]
+    break_deltas = [y-x for (x,y) in zip(breaks, breaks[1::])]
+    try:
+        mode = statistics.mode(break_deltas)
+    except statistics.StatisticsError:
+        mode = round(statistics.mean(break_deltas))
+    #print(round(max(breaks) // mode))
+    #print(breaks)
+    breaks = [x*mode for x in range(round(max(breaks) // mode) + 2)]
     if breaks and breaks[0] != 0:
         breaks.insert(0,0)
     for (x,y) in zip(breaks, breaks[1::]):
         packet = xs[x+1:y]
         pb = []
-        ratios = []
         for chip in zip(packet[::2], packet[1::2]):
-            ratios += [max(chip[0][0] // chip[1][0], chip[1][0] // chip[0][0])]
-            if chip[0][0] > chip[1][0]:
+            if abs(chip[0][0] - short_decile) > abs(chip[0][0] - long_decile):
                 pb += [1]
             else:
                 pb += [0]
-        if packet and len(pb):
-            print(len(pb), printer(pb))
-            print(ratios)
-            ratios = []
-            #print(packet[0:2], packet[-2:])
-    #print(breaks)
+        print(len(pb), printer(pb))
+    #print('breaks', breaks)
 
 
 ba = bitarray(endian='big')
 
 log = open(str(int(time.time()))+'.bitstreams.log', 'wb')
 
+# block size
+bs = 16834
 while True:
-    p = s1.xfer2([0]*(63))
-    if p not in [[255]*63, [0]*63]:
-        r += p
-    if p == [0]*63:
-        ct += 1
-    if ct > 4 and r:
-        log.write(base64.b64encode(bytes(r))+b'\r\n')
+    p = s.transfer([0]*bs)
+    if p not in [[255]*bs, [0]*bs]:
+        log.write(base64.b64encode(bytes(p))+b'\r\n')
         log.flush()
-        ba.frombytes(bytes(r))
+        ba.frombytes(bytes(p))
         packetizer([x for x in rle(ba)])
         ba = bitarray(endian='big')
-        r = []
-        ct = 0
-
