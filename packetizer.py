@@ -8,35 +8,46 @@ import statistics
 import base64
 import time
 
-printer = lambda xs: ''.join([{0: '▁', 1: '█'}[x] for x in xs])
+printer = lambda xs: ''.join([{0: '░', 1: '█', 2: '╳'}[x] for x in xs])
 
 def packetizer(xs):
     counts = sorted([x[0] for x in xs if x[1]])
     decile = len(counts)//10
+    if not decile:
+        return None
     short_decile = statistics.mean(counts[1*decile:2*decile])
     long_decile = statistics.mean(counts[8*decile:9*decile])
     #print('first counts', short_decile, long_decile)
     #print([x for x in rle(counts)])
-    breaks = [i[0] for i in enumerate(xs) if (i[1][0] > short_decile  * 4) and (i[1][1] == False)]
+    breaks = [i[0] for i in enumerate(xs) if (i[1][0] > short_decile  * 8) and (i[1][1] == False)]
     break_deltas = [y-x for (x,y) in zip(breaks, breaks[1::])]
+    if not break_deltas:
+        return None
     try:
         mode = statistics.mode(break_deltas)
     except statistics.StatisticsError:
         mode = round(statistics.mean(break_deltas))
-    #print(round(max(breaks) // mode))
-    #print(breaks)
-    breaks = [x*mode for x in range(round(max(breaks) // mode) + 2)]
+    # determine expected packet widths
+    breaks2 = [x*mode for x in range(round(max(breaks) // mode))]
+    if len(breaks2) < 2:
+        return None
+    # discard breaks more than 10% from expected position
+    breaks = [x for x in breaks if True in [abs(x-y) < breaks2[1]//10 for y in breaks2]]
+    print(breaks)
     if breaks and breaks[0] != 0:
         breaks.insert(0,0)
     for (x,y) in zip(breaks, breaks[1::]):
         packet = xs[x+1:y]
         pb = []
         for chip in zip(packet[::2], packet[1::2]):
-            if abs(chip[0][0] - short_decile) > abs(chip[0][0] - long_decile):
+            if (abs(chip[0][0] - short_decile) < short_decile // 4):
+                pb += [0]
+            elif abs(chip[0][0] - long_decile) < long_decile // 4:
                 pb += [1]
             else:
-                pb += [0]
-        print(len(pb), printer(pb))
+                pb += [2]
+        if len(pb):
+            print(len(pb), printer(pb))
     #print('breaks', breaks)
 
 
@@ -45,7 +56,7 @@ ba = bitarray(endian='big')
 log = open(str(int(time.time()))+'.bitstreams.log', 'wb')
 
 # block size
-bs = 16834
+bs = 32768
 while True:
     p = s.transfer([0]*bs)
     if p not in [[255]*bs, [0]*bs]:
