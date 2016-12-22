@@ -7,34 +7,43 @@ from rle import *
 from statistics import mode, mean, StatisticsError
 import base64
 import time
+import itertools
 
 printer = lambda xs: ''.join([{0: '░', 1: '█', 2: '╳'}[x] for x in xs])
+debinary = lambda ba: sum([x*(2**i) for (i,x) in enumerate(reversed(ba))])
 
-def packetizer(xs):
-    # drop short (clearly erroneous, spurious) pulses
-    xs = [x for x in rle(rld([x for x in xs if x[0] > 2]))]
-    # sort pulse widths
-    counts_1 = sorted([x[0] for x in xs if x[1]])
-    counts_0 = sorted([x[0] for x in xs if not x[1]])
-    print('high', [x for x in rle(counts_1) if x[0] > 1 ])
-    print('low', [x for x in rle(counts_0) if x[0] > 1 ])
-    decile_1 = len(counts_1)//10
-    decile_0 = len(counts_0)//10
-    if (not decile_0) or (not decile_1):
-        return (None, 'not enough data to derive decile')
-    # find short and long segments
-    short_decile_0 = mean(counts_0[1*decile_0:2*decile_0])
-    long_decile_0 = mean(counts_0[8*decile_0:9*decile_0])
-    short_decile_1 = mean(counts_1[1*decile_1:2*decile_1])
-    long_decile_1 = mean(counts_1[8*decile_1:9*decile_1])
+class PacketBase(object):
+    def __init__(self, packet = [], errors = None, deciles = {}, raw = []):
+        self.packet = packet
+        self.errors = errors
+        self.deciles = deciles
+        self.raw = raw
+
+def get_decile_durations(pulses):
+    values = set([value for (width, value) in pulses])
+    deciles = {}
+    if len(pulses) < 10:
+        return None
+    for value in sorted(list(values)):
+        counts = sorted([width for (width, x) in pulses if x == value])
+        tenth = len(counts) // 10
+        if not tenth:
+            return None
+        short_decile = mean(counts[1*tenth:2*tenth])
+        long_decile = mean(counts[8*tenth:9*tenth])
+        deciles[value] = (short_decile, long_decile)
+    return deciles
+
+def find_pulse_groups(pulses, deciles):
     # find segments of quiet that are 9x longer than the short period
-    breaks = [i[0] for i in enumerate(xs) if (i[1][0] > min(short_decile_0,short_decile_1)  * 9) and (i[1][1] == False)]
+    # this is naive, if a trivial pulse width encoding is used, any sequence of 9 or more short sequential silences will be read as a packet break
+    breaks = [i[0] for i in enumerate(pulses) if (i[1][0] > min(deciles[0][0],deciles[1][0])  * 9) and (i[1][1] == False)]
     # find periodicity of the packets
     break_deltas = [y-x for (x,y) in zip(breaks, breaks[1::])]
-    print('break_deltas', break_deltas)
     if len(break_deltas) < 2:
-        return (None, 'no breaks detected')
-    elif len(set(break_deltas)) > 3:
+        return None
+    # ignoring few-pulse packets, if you have more than three different fragment sizes, try to regularize
+    elif len(set([bd for bd in break_deltas if bd > 3])) > 3:
         try:
             d_mode = mode(break_deltas)
         # if all values different, use mean as mode
@@ -43,40 +52,64 @@ def packetizer(xs):
         # determine expected periodicity of packet widths
         breaks2 = [x*d_mode for x in range(round(max(breaks) // d_mode))]
         if len(breaks2) < 2:
-            return (None, 'no packets')
+            return None
         # discard breaks more than 10% from expected position
         breaks = [x for x in breaks if True in [abs(x-y) < breaks2[1]//10 for y in breaks2]]
         # define packet pulses as the segment between breaks
+    return breaks
+
+def demodulator(pulses):
+    packets = []
+    # drop short (clearly erroneous, spurious) pulses
+    pulses = [x for x in rle(rld([x for x in pulses if x[0] > 2]))]
+    deciles = get_decile_durations(pulses)
+    if not deciles:
+        return packets
+    breaks = find_pulse_groups(pulses, deciles)
+    if not breaks:
+        return packets
     for (x,y) in zip(breaks, breaks[1::]):
-        packet = xs[x+1:y]
+        packet = pulses[x+1:y]
         pb = []
         errors = []
         # iterate over packet pulses
         for chip in packet:
-            # short pulse - 1 bitwidth of either high or low - if high, this is usually '0'
-            if (chip[1] == True) and (abs(chip[0] - short_decile_1) < short_decile_1 // 2):
-                pb += [1]
-            elif (chip[1] == False) and (abs(chip[0] - short_decile_0) < short_decile_0 // 2):
-                pb += [0]
-            # long pulse - 2 bitwidths of either high or low - if high, this is usually '1'
-            elif (chip[1] == True) and (abs(chip[0] - long_decile_1) < long_decile_1 // 2):
-                pb += [1,1]
-            elif (chip[1] == False) and (abs(chip[0] - long_decile_0) < long_decile_0 // 2):
-                pb += [0,0]
-            # if pulse isn't nicely compartmentalized by the above, return an error
-            else:
+            valid = False
+            for v in deciles.keys():
+                for (i, width) in enumerate(deciles[v]):
+                    if (not valid) and (chip[1] == v) and (abs(chip[0] - width) < width // 2):
+                        pb += [v]*(i+1)
+                        valid = True
+            if not valid:
                 errors += [chip]
                 pb += [2]
         if len(pb) > 4:
-            print(len(pb), printer(pb))
-            if len(errors) > 0:
-                print('temporal quantification errors', errors)
-                print("doesn't fit into", ('short:', short_decile_0, short_decile_1), ('long:', long_decile_0, long_decile_1))
-    return ('breaks', breaks)
-
+            result = PacketBase(pb, errors, deciles, pulses[x:y])
+            packets.append(result)
+    return packets
 
 ba = bitarray(endian='big')
 
+def silver_sensor(packet):
+    if packet.errors == []:
+        bits = [x[0] == 2 for x in rle(packet.packet) if x[1] == 0]
+        # some thanks to http://forum.iobroker.net/viewtopic.php?t=3818
+        # "TTTT=Binär in Dez., Dez als HEX, HEX in Dez umwandeln (zB 0010=2Dez, 2Dez=2 Hex) 0010=2 1001=9 0110=6 => 692 HEX = 1682 Dez = >1+6= 7 UND 82 = 782°F"
+        if len(bits) == 42:
+            fields = [0,2,8,2,2,4,4,4,4,4,8]
+            fields = [x for x in itertools.accumulate(fields)]
+            results = [debinary(bits[x:y]) for (x,y) in zip(fields, fields[1:])]
+            temp = (16**2*results[6]+16*results[5]+results[4])
+            humidity = (16*results[8]+results[7])
+            if temp > 1000:
+                temp %= 1000
+                temp += 100
+            temp /= 10
+            temp -= 32
+            temp *= 5/9
+            print(hex(debinary(bits[0:36])), results[-1])
+            return {'uid':results[1], 'temperature': temp, 'humidity': humidity, 'channel':results[3]}
+    return None
 
 # block size
 bs = 32768
@@ -90,4 +123,5 @@ while True:
         log.write(base64.b64encode(bytes(p))+b'\r\n')
         log.close()
         ba.frombytes(bytes(p))
-        print(current_time, packetizer([x for x in rle(ba)]))
+        for packet in demodulator(rle(ba)):
+            print(silver_sensor(packet))
