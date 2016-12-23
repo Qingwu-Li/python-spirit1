@@ -1,5 +1,5 @@
 import spi
-from time import sleep
+import time
 import atexit
 import spirit1_regs as s1r
 
@@ -28,12 +28,12 @@ class SpiritOne(object):
             pass
         t_output(SDN)
         t_high(SDN)
-        sleep(0.1)
+        time.sleep(0.1)
         t_low(SDN)
-        sleep(0.005)
+        time.sleep(0.005)
         if SRES:
             self.command(s1r.COMMAND_SRES)
-            sleep(0.002)
+            time.sleep(0.002)
         self.set_IF()
         atexit.register(self.cleanup)
 
@@ -168,23 +168,29 @@ class SpiritOne(object):
     def set_no_SQI(self):
         self.write(s1r.QI_BASE, 0)
 
+    def setup_RX(freq = 433.92e6):
+        s1.set_freq(433.92e6)
+        freq = s1.get_f_base()
+        s1.set_max_channel_filter()
+        s1.set_RX_MODE()
+        s1.set_no_AFC()
+        s1.setup_AGC()
+        s1.setup_RSSI()
+        s1.set_no_SQI()
+        s1.setup_clockrec()
+        s1.set_MOD(s1r.MOD0_MOD_TYPE_ASK, rate=1 / 0.000165)
+        # enable carrier sense blanking
+        s1.write(s1r.ANT_SELECT_CONF_BASE, 0b10000)
+        return s1.decode_MC(*s1.command(s1r.COMMAND_RX))
+
 if __name__ == "__main__":
     s1 = SpiritOne()
-    s1.set_freq(433.92e6)
-    freq = s1.get_f_base()
-    s1.set_max_channel_filter()
-    s1.set_RX_MODE()
-    s1.set_no_AFC()
-    s1.setup_AGC()
-    s1.setup_RSSI()
-    s1.set_no_SQI()
-    s1.setup_clockrec()
-    s1.set_MOD(s1r.MOD0_MOD_TYPE_ASK, rate=1 / 0.000165)
-    # enable carrier sense blanking
-    s1.write(s1r.ANT_SELECT_CONF_BASE, 0b10000)
-    print(s1.decode_MC(*s1.command(s1r.COMMAND_RX)))
-    sleep(1)
+    last = 0
     while True:
+        if (time.time() - last) > 600:
+            print(s1.setup_RX())
+            last = time.time()
+            time.sleep(1)
         link_qual = s1.read(s1r.LINK_QUALIF1_BASE, 3)
         # call SABORT to update RSSI and AGC
         s1.decode_MC(*s1.command(s1r.COMMAND_SABORT))
@@ -197,4 +203,4 @@ if __name__ == "__main__":
             res = s1.command(s1r.COMMAND_FLUSHRXFIFO)
             #print(bin(int().from_bytes(bytes(res[3::]), 'big')))
             print('RSSI', link_qual[-1]/2-130.)
-        sleep(0.05)
+        time.sleep(0.05)

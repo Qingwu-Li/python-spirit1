@@ -3,7 +3,6 @@ s = spi.SPI('/dev/spidev32765.0', 0, 100000)
 from bitarray import bitarray
 r = []
 ct = 0
-from rle import *
 from statistics import mode, mean, StatisticsError
 import base64
 import time
@@ -11,6 +10,10 @@ import itertools
 
 printer = lambda xs: ''.join([{0: '░', 1: '█', 2: '╳'}[x] for x in xs])
 debinary = lambda ba: sum([x*(2**i) for (i,x) in enumerate(reversed(ba))])
+
+ilen = lambda it: sum(1 for _ in it)
+rle = lambda xs: ((ilen(gp), x) for x, gp in itertools.groupby(xs))
+rld = lambda xs: itertools.chain.from_iterable(itertools.repeat(x, n) for n, x in xs)
 
 class PacketBase(object):
     def __init__(self, packet = [], errors = None, deciles = {}, raw = []):
