@@ -19,9 +19,14 @@ except:
 
 class SpiritOne(object):
 
-    def __init__(self, crystal=50e6, SRES=True):
+    def __init__(self, crystal=50e6, reset=True):
         self.crystal = crystal
         self.spi = spi.SPI('/dev/spidev32766.0', 0, 1000000)
+        atexit.register(self.cleanup)
+        if reset:
+            self.reset()
+
+    def reset(self):
         try:
             t_export(SDN)
         except:
@@ -31,11 +36,10 @@ class SpiritOne(object):
         time.sleep(0.1)
         t_low(SDN)
         time.sleep(0.005)
-        if SRES:
-            self.command(s1r.COMMAND_SRES)
-            time.sleep(0.002)
+        self.command(s1r.COMMAND_SRES)
+        time.sleep(0.002)
         self.set_IF()
-        atexit.register(self.cleanup)
+        
 
     def calc_rate(self, rate):
         for DR_E in range(16):
@@ -188,6 +192,7 @@ if __name__ == "__main__":
     last = 0
     while True:
         if (time.time() - last) > 600:
+            s1.reset()
             print(s1.setup_RX())
             last = time.time()
             time.sleep(1)

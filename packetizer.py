@@ -1,15 +1,17 @@
 import spi
 s = spi.SPI('/dev/spidev32765.0', 0, 100000)
 from bitarray import bitarray
-r = []
-ct = 0
+
 from statistics import mode, mean, StatisticsError
-import base64
+
+import json
 import time
 import itertools
 
 printer = lambda xs: ''.join([{0: '░', 1: '█', 2: '╳'}[x] for x in xs])
 debinary = lambda ba: sum([x*(2**i) for (i,x) in enumerate(reversed(ba))])
+
+import tsd_client
 
 ilen = lambda it: sum(1 for _ in it)
 rle = lambda xs: ((ilen(gp), x) for x, gp in itertools.groupby(xs))
@@ -32,8 +34,8 @@ def get_decile_durations(pulses):
         tenth = len(counts) // 10
         if not tenth:
             return None
-        short_decile = mean(counts[1*tenth:2*tenth])
-        long_decile = mean(counts[8*tenth:9*tenth])
+        short_decile = int(mean(counts[1*tenth:2*tenth]))
+        long_decile = int(mean(counts[8*tenth:9*tenth]))
         deciles[value] = (short_decile, long_decile)
     return deciles
 
@@ -102,6 +104,9 @@ def silver_sensor(packet):
             fields = [0,2,8,2,2,4,4,4,4,4,8]
             fields = [x for x in itertools.accumulate(fields)]
             results = [debinary(bits[x:y]) for (x,y) in zip(fields, fields[1:])]
+            # uid is never 0xff, but similar protocols sometimes decode with this field as 0xFF
+            if results[1] == 255:
+                return None
             temp = (16**2*results[6]+16*results[5]+results[4])
             humidity = (16*results[8]+results[7])
             if temp > 1000:
@@ -110,21 +115,33 @@ def silver_sensor(packet):
             temp /= 10
             temp -= 32
             temp *= 5/9
-            print(hex(debinary(bits[0:36])), results[-1])
-            return {'uid':results[1], 'temperature': temp, 'humidity': humidity, 'channel':results[3]}
+            return {'uid':results[1], 'temperature': temp, 'humidity': humidity, 'channel':results[3], 'metameta': packet.__dict__}
     return None
 
 # block size
 bs = 32768
+
+last = {}
 while True:
     p = s.transfer([0]*bs)
     # if input values are all-high or all-low
     ba = bitarray(endian='big')
-    if p not in [[255]*bs, [0]*bs]:
+    ba.frombytes(bytes(p))
+    pulses = [(w,v*1) for (w,v) in rle(ba)]
+    if len(pulses) > 10:
         current_time = time.time()
-        log = open(str(int(current_time))+'.bitstreams.log', 'wb')
-        log.write(base64.b64encode(bytes(p))+b'\r\n')
-        log.close()
-        ba.frombytes(bytes(p))
-        for packet in demodulator(rle(ba)):
-            print(silver_sensor(packet))
+        for packet in demodulator(pulses):
+            print(printer(packet.packet))
+            send_and_update = False
+            res = silver_sensor(packet)
+            if res is not None:
+                uid = res['uid']
+            else:
+                uid = None
+            if (uid in last.keys()) and ((time.time() - last[uid]) > 30):
+                send_and_update = True
+            else:
+                last[uid] = time.time()
+            if (res is not None) and send_and_update:
+                last[uid] = time.time()
+                tsd_client.log(res)
